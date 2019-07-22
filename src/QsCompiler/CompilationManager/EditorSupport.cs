@@ -369,6 +369,10 @@ namespace Microsoft.Quantum.QsCompiler.CompilationBuilder
             var ambiguousTypes = context.Diagnostics.Where(DiagnosticTools.ErrorType(ErrorCode.AmbiguousType));
             var unknownTypes = context.Diagnostics.Where(DiagnosticTools.ErrorType(ErrorCode.UnknownType));
 
+            CodeFragment frag;
+            //file?.TryGetQsSymbolInfo(context.Diagnostics.First().Range.Start, true, out frag);
+            file?.TryGetQsSymbolInfo(range.Start, true, out frag);
+
             // suggestions for ambiguous ids and types
 
             (string, WorkspaceEdit) SuggestedNameQualification(NonNullable<string> suggestedNS, string id, Position pos)
@@ -383,6 +387,12 @@ namespace Microsoft.Quantum.QsCompiler.CompilationBuilder
             var suggestedTypeQualifications = ambiguousTypes.Select(d => d.Range.Start)
                 .SelectMany(pos => file.NamespaceSuggestionsForTypeAtPosition(pos, compilation, out var id)
                 .Select(ns => SuggestedNameQualification(ns, id, pos)));
+
+            //suggestedIdQualifications = suggestedIdQualifications.Concat(new List<(string, WorkspaceEdit)>()
+            //{
+            //    ("Hello World", (WorkspaceEdit)null),
+            //    ("Hello Quantum", (WorkspaceEdit)null)
+            //});
 
             if (!unknownCallables.Any() && !unknownTypes.Any())
             { return suggestedIdQualifications.Concat(suggestedTypeQualifications).ToImmutableDictionary(s => s.Item1, s => s.Item2); }
@@ -623,6 +633,37 @@ namespace Microsoft.Quantum.QsCompiler.CompilationBuilder
                 ActiveSignature = 0, 
                 ActiveParameter = precedingArgs.Count() 
             };
+        }
+
+        //TODO: This is likely a duplicate
+        /// <summary>
+        /// Returns the index in the fragment text corresponding to the given absolute position.
+        /// </summary>
+        /// <exception cref="ArgumentException">
+        /// Thrown when the position is not contained within the fragment.
+        /// </exception>
+        private static int GetTextIndexFromPosition(CodeFragment fragment, Position position)
+        {
+            if (fragment == null)
+                throw new ArgumentNullException("fragment");
+            if (position == null)
+                throw new ArgumentNullException("position");
+
+            int relativeLine = position.Line - fragment.GetRange().Start.Line;
+            string[] lines = Utils.SplitLines(fragment.Text);
+            int relativeChar =
+                relativeLine == 0 ? position.Character - fragment.GetRange().Start.Character : position.Character;
+
+            if (relativeLine < 0 ||
+                relativeLine >= lines.Length ||
+                relativeChar < 0 ||
+                // Assume includeEnd is true and allow the position to be one character after the last character in the
+                // fragment (so only check strictly greater than).
+                relativeChar > lines[relativeLine].Length)
+            {
+                throw new ArgumentException("position is not contained within the fragment", "position");
+            }
+            return lines.Take(relativeLine).Sum(line => line.Length) + relativeChar;
         }
     }
 }
